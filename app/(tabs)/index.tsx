@@ -3,12 +3,13 @@ import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView } from 'rea
 import { useUser } from '@clerk/clerk-expo';
 import { useTranslation } from 'react-i18next';
 import { useThemeConfig } from '../../context/ThemeConfig';
-import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
+import { Ionicons, FontAwesome5, MaterialCommunityIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../../config/firebaseConfig';
+import i18n from '../../i18n';
 
-type HabitKeys = "meditation" | "flowers" | "chanting" | "poya";
+type HabitKeys = "pansil" | "meditation" | "offerings";
 
 export default function HomeTab() {
   const { user } = useUser();
@@ -16,15 +17,35 @@ export default function HomeTab() {
   const { colors } = useThemeConfig();
 
   const [habits, setHabits] = useState<Record<HabitKeys, boolean>>({
+    pansil: false,
     meditation: false,
-    flowers: false,
-    chanting: false,
-    poya: false
+    offerings: false
   });
+  
+  const [dailyQuote, setDailyQuote] = useState<string>('');
 
   const today = new Date().toISOString().split('T')[0];
+  const langKey = i18n.language === 'si' ? 'si' : 'en';
 
   useEffect(() => {
+    // 1. Fetch Quote
+    const fetchQuote = async () => {
+      try {
+        const quoteRef = doc(db, "daily_quotes", today);
+        const quoteSnap = await getDoc(quoteRef);
+        if (quoteSnap.exists()) {
+          const data = quoteSnap.data();
+          setDailyQuote(data[langKey] || data['en'] || t('home_quote_sample'));
+        } else {
+          setDailyQuote(t('home_quote_sample'));
+        }
+      } catch (err) {
+        setDailyQuote(t('home_quote_sample'));
+      }
+    };
+    fetchQuote();
+
+    // 2. Fetch Habits
     if (!user?.id) return;
     const fetchHabits = async () => {
       try {
@@ -38,7 +59,7 @@ export default function HomeTab() {
       }
     };
     fetchHabits();
-  }, [user?.id, today]);
+  }, [user?.id, today, langKey]);
 
   const toggleHabit = async (key: HabitKeys) => {
     const newState = { ...habits, [key]: !habits[key] };
@@ -54,7 +75,18 @@ export default function HomeTab() {
     }
   };
 
-  const renderHabitRow = (key: HabitKeys, translationKey: string, iconName: keyof typeof Ionicons.glyphMap) => {
+  const renderQuickAction = (iconLib: any, iconName: string, titleKey: string) => (
+    <TouchableOpacity style={[styles.actionCard, { backgroundColor: colors.inputBackground, borderColor: colors.border }]} activeOpacity={0.7}>
+       <View style={[styles.actionIconWrapper, { backgroundColor: colors.tint + '15' }]}>
+         {React.createElement(iconLib, { name: iconName, size: 28, color: colors.tint })}
+       </View>
+       <Text style={[styles.actionText, { color: colors.text }]} numberOfLines={2}>
+         {t(titleKey)}
+       </Text>
+    </TouchableOpacity>
+  );
+
+  const renderHabitRow = (key: HabitKeys, translationKey: string) => {
     const isCompleted = habits[key];
     return (
       <TouchableOpacity 
@@ -63,9 +95,6 @@ export default function HomeTab() {
         onPress={() => toggleHabit(key)}
         activeOpacity={0.7}
       >
-        <View style={styles.habitIconWrapper}>
-          <Ionicons name={iconName} size={22} color={isCompleted ? colors.tint : colors.tabIconDefault} />
-        </View>
         <Text style={[styles.habitText, { color: colors.text, textDecorationLine: isCompleted ? "line-through" : "none" }]}>
           {t(translationKey)}
         </Text>
@@ -106,6 +135,19 @@ export default function HomeTab() {
 
       <ScrollView contentContainerStyle={styles.content}>
         
+        {/* Quick Actions ScrollView */}
+        <View style={styles.sectionHeaderWrap}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>
+            {t('quick_actions_title')}
+          </Text>
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.actionsScroll}>
+           {renderQuickAction(FontAwesome5, 'cloud-moon', 'action_funeral')}
+           {renderQuickAction(FontAwesome5, 'tree', 'action_bodhipuja')}
+           {renderQuickAction(FontAwesome5, 'ring', 'action_wedding')}
+           {renderQuickAction(MaterialCommunityIcons, 'hand-heart', 'action_almsgiving')}
+        </ScrollView>
+        
         {/* Daily Quote Card */}
         <View style={[styles.quoteCard, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
           <View style={styles.quoteHeader}>
@@ -115,11 +157,11 @@ export default function HomeTab() {
             </Text>
           </View>
           <Text style={[styles.quoteText, { color: colors.text }]}>
-            "{t('home_quote_sample')}"
+            "{dailyQuote}"
           </Text>
         </View>
 
-        {/* Habits Checklist */}
+        {/* Simplified Daily Practice */}
         <View style={styles.sectionHeaderWrap}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>
             {t('home_habit_title')}
@@ -127,12 +169,13 @@ export default function HomeTab() {
         </View>
 
         <View style={styles.habitsWrapper}>
-          {renderHabitRow('meditation', 'habit_meditation', 'leaf')}
-          {renderHabitRow('flowers', 'habit_flowers', 'flower')}
-          {renderHabitRow('chanting', 'habit_chanting', 'book')}
-          {renderHabitRow('poya', 'habit_poya', 'moon')}
+          {renderHabitRow('pansil', 'habit_pansil')}
+          {renderHabitRow('meditation', 'habit_meditation')}
+          {renderHabitRow('offerings', 'habit_offerings')}
         </View>
-
+        
+        {/* Padding for FAB spacing */}
+        <View style={{ height: 60 }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -159,6 +202,33 @@ const styles = StyleSheet.create({
   },
   content: { padding: 24, paddingTop: 12 },
   
+  // Quick Actions
+  actionsScroll: {
+    paddingBottom: 24,
+    gap: 16,
+  },
+  actionCard: {
+    width: 120,
+    height: 120,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 16,
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  actionIconWrapper: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionText: {
+    fontSize: 14,
+    fontWeight: '700',
+    marginTop: 8,
+  },
+
   // Quote Card
   quoteCard: {
     borderRadius: 16,
@@ -191,15 +261,6 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 14,
     borderWidth: 1,
-  },
-  habitIconWrapper: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(0,0,0,0.04)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
   },
   habitText: {
     flex: 1,
