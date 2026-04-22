@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, Modal, Alert } from 'react-native';
 import { useUser } from '@clerk/clerk-expo';
 import { useTranslation } from 'react-i18next';
 import { useThemeConfig } from '../../context/ThemeConfig';
 import { Ionicons, FontAwesome5, MaterialCommunityIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, addDoc } from 'firebase/firestore';
 import { db } from '../../config/firebaseConfig';
+import { router } from 'expo-router';
 import i18n from '../../i18n';
 
 type HabitKeys = "pansil" | "meditation" | "offerings";
@@ -23,46 +24,57 @@ export default function HomeTab() {
   });
   
   const [dailyQuote, setDailyQuote] = useState<string>('');
+  const [modalVisible, setModalVisible] = useState(false);
+  const [latestEvents, setLatestEvents] = useState<any[]>([]);
+  
+  const [logActionType, setLogActionType] = useState<"meditation" | "good_deed" | "temple" | null>(null);
+  const [inputValue, setInputValue] = useState("");
 
   const today = new Date().toISOString().split('T')[0];
   const langKey = i18n.language === 'si' ? 'si' : 'en';
 
   useEffect(() => {
-    // 1. Fetch Quote
-    const fetchQuote = async () => {
+    const fetchDashboardParams = async () => {
       try {
-        const quoteRef = doc(db, "daily_quotes", today);
-        const quoteSnap = await getDoc(quoteRef);
-        if (quoteSnap.exists()) {
-          const data = quoteSnap.data();
-          setDailyQuote(data[langKey] || data['en'] || t('home_quote_sample'));
-        } else {
-          setDailyQuote(t('home_quote_sample'));
+        const userId = user?.id;
+        if (!userId) return;
+        const ref = doc(db, "users", userId, "habits", today);
+        const snap = await getDoc(ref);
+        if (snap.exists()) {
+          setHabits(snap.data() as any);
         }
-      } catch (err) {
+      } catch (e) {
+        console.error("Failed to load daily habits", e);
+      }
+      
+      try {
+        import('firebase/firestore').then(({ collection, query, getDocs }) => {
+           getDocs(query(collection(db, "UpcomingEvents"))).then(evSnap => {
+              const evData = evSnap.docs.map(d => ({ docId: d.id, ...d.data() }));
+              setLatestEvents(evData);
+           }).catch(e => console.error("Failed to load upcoming events", e));
+        });
+      } catch (e) {}
+
+      try {
+        const quoteSnap = await getDoc(doc(db, "daily_quotes", today));
+        if (quoteSnap.exists()) {
+           const data = quoteSnap.data();
+           setDailyQuote(data[langKey] || data['en'] || data['text'] || t('home_quote_sample'));
+        } else {
+           setDailyQuote(t('home_quote_sample'));
+        }
+      } catch (e) {
         setDailyQuote(t('home_quote_sample'));
       }
     };
-    fetchQuote();
 
-    // 2. Fetch Habits
-    if (!user?.id) return;
-    const fetchHabits = async () => {
-      try {
-        const docRef = doc(db, "users", user.id, "habits", today);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          setHabits(docSnap.data() as Record<HabitKeys, boolean>);
-        }
-      } catch (err) {
-        console.error("Failed to load daily habits", err);
-      }
-    };
-    fetchHabits();
+    fetchDashboardParams();
   }, [user?.id, today, langKey]);
 
-  const toggleHabit = async (key: HabitKeys) => {
-    const newState = { ...habits, [key]: !habits[key] };
+  const toggleHabit = async (key: HabitKeys, overrideValue: boolean = false) => {
+    const newVal = overrideValue ? true : !habits[key];
+    const newState = { ...habits, [key]: newVal };
     setHabits(newState);
 
     if (user?.id) {
@@ -75,38 +87,47 @@ export default function HomeTab() {
     }
   };
 
-  const renderQuickAction = (iconLib: any, iconName: string, titleKey: string) => (
-    <TouchableOpacity style={[styles.actionCard, { backgroundColor: colors.inputBackground, borderColor: colors.border }]} activeOpacity={0.7}>
-       <View style={[styles.actionIconWrapper, { backgroundColor: colors.tint + '15' }]}>
-         {React.createElement(iconLib, { name: iconName, size: 28, color: colors.tint })}
-       </View>
-       <Text style={[styles.actionText, { color: colors.text }]} numberOfLines={2}>
-         {t(titleKey)}
-       </Text>
-    </TouchableOpacity>
-  );
+  const handlePansil = async () => {
+    setModalVisible(false);
+    if(user?.id) {
+       try {
+         await addDoc(collection(db, "UserLogs"), {
+             userId: user.id, type: "pansil", timestamp: new Date().toISOString(), date: today
+         });
+         await toggleHabit("pansil", true);
+       } catch(e) {}
+    }
+    Alert.alert("Sadhu Sadhu!", t('toast_pansil_success'));
+  };
 
-  const renderHabitRow = (key: HabitKeys, translationKey: string) => {
-    const isCompleted = habits[key];
-    return (
-      <TouchableOpacity 
-        key={key} 
-        style={[styles.habitRow, { backgroundColor: colors.inputBackground, borderColor: isCompleted ? colors.tint : colors.border }]}
-        onPress={() => toggleHabit(key)}
-        activeOpacity={0.7}
-      >
-        <Text style={[styles.habitText, { color: colors.text, textDecorationLine: isCompleted ? "line-through" : "none" }]}>
-          {t(translationKey)}
-        </Text>
-        <View style={styles.checkbox}>
-          <Ionicons 
-            name={isCompleted ? "checkmark-circle" : "ellipse-outline"} 
-            size={28} 
-            color={isCompleted ? colors.tint : colors.tabIconDefault} 
-          />
-        </View>
-      </TouchableOpacity>
-    );
+  const handleOpenLog = (type: "meditation" | "good_deed" | "temple") => {
+    setModalVisible(false);
+    setInputValue("");
+    setLogActionType(type);
+  };
+
+  const saveLog = async () => {
+    if(user?.id && logActionType) {
+       try {
+         await addDoc(collection(db, "UserLogs"), {
+             userId: user.id, type: logActionType, value: inputValue, timestamp: new Date().toISOString(), date: today
+         });
+         if(logActionType === "meditation") {
+             await toggleHabit("meditation", true);
+             Alert.alert("Sadhu!", t('toast_meditation_success'));
+         } else if(logActionType === "good_deed") {
+             await toggleHabit("offerings", true);
+             Alert.alert("Sadhu!", t('toast_deed_success'));
+         } else if(logActionType === "temple") {
+             Alert.alert("Sadhu!", t('toast_temple_success'));
+         }
+       } catch(e) {}
+    }
+    setLogActionType(null);
+  };
+
+  const openEvent = (id: string) => {
+     router.push(`/events/${id}` as any);
   };
 
   return (
@@ -135,20 +156,43 @@ export default function HomeTab() {
 
       <ScrollView contentContainerStyle={styles.content}>
         
-        {/* Quick Actions ScrollView */}
         <View style={styles.sectionHeaderWrap}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>
             {t('quick_actions_title')}
           </Text>
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.actionsScroll}>
-           {renderQuickAction(FontAwesome5, 'cloud-moon', 'action_funeral')}
-           {renderQuickAction(FontAwesome5, 'tree', 'action_bodhipuja')}
-           {renderQuickAction(FontAwesome5, 'ring', 'action_wedding')}
-           {renderQuickAction(MaterialCommunityIcons, 'hand-heart', 'action_almsgiving')}
+           {latestEvents.length === 0 ? (
+              <View style={[styles.actionCard, { backgroundColor: colors.inputBackground, borderColor: colors.border, width: 250, justifyContent: 'center' }]}>
+                 <Text style={{color: colors.tabIconDefault, textAlign: 'center'}}>No upcoming events.</Text>
+              </View>
+           ) : (
+              latestEvents.map((evt) => (
+                 <TouchableOpacity 
+                   key={evt.docId} 
+                   style={[styles.actionCard, { backgroundColor: colors.inputBackground, borderColor: colors.border, width: 220, padding: 16, alignItems: 'flex-start' }]} 
+                   activeOpacity={0.7}
+                   onPress={() => openEvent(evt.eventId || evt.docId)}
+                 >
+                    <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 12}}>
+                       <Ionicons name="location-outline" size={16} color={colors.tint} style={{marginRight: 4}} />
+                       <Text style={{color: colors.tint, fontWeight: 'bold', fontSize: 15}} numberOfLines={1}>
+                         {evt.title || evt[langKey] || evt.en || 'Special Event'}
+                       </Text>
+                    </View>
+                    <Text style={{color: colors.text, fontSize: 13, opacity: 0.85, flex: 1, lineHeight: 18}} numberOfLines={2}>
+                      {evt.desc || evt[`desc_${langKey}`] || evt.description || ''}
+                    </Text>
+                    {!!evt.date && (
+                       <Text style={{color: colors.tabIconDefault, fontSize: 12, marginTop: 12, fontWeight: '600'}}>
+                         {evt.date}
+                       </Text>
+                    )}
+                 </TouchableOpacity>
+              ))
+           )}
         </ScrollView>
         
-        {/* Daily Quote Card */}
         <View style={[styles.quoteCard, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
           <View style={styles.quoteHeader}>
             <FontAwesome5 name="quote-left" size={16} color={colors.tint} />
@@ -161,22 +205,78 @@ export default function HomeTab() {
           </Text>
         </View>
 
-        {/* Simplified Daily Practice */}
-        <View style={styles.sectionHeaderWrap}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>
-            {t('home_habit_title')}
-          </Text>
-        </View>
-
-        <View style={styles.habitsWrapper}>
-          {renderHabitRow('pansil', 'habit_pansil')}
-          {renderHabitRow('meditation', 'habit_meditation')}
-          {renderHabitRow('offerings', 'habit_offerings')}
-        </View>
-        
-        {/* Padding for FAB spacing */}
         <View style={{ height: 60 }} />
       </ScrollView>
+
+      <TouchableOpacity 
+        style={[styles.fab, { backgroundColor: colors.tint }]} 
+        onPress={() => setModalVisible(true)} 
+        activeOpacity={0.8}
+      >
+        <Ionicons name="add" size={32} color="#FFF" />
+      </TouchableOpacity>
+
+      <Modal visible={modalVisible} transparent animationType="fade" onRequestClose={() => setModalVisible(false)}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setModalVisible(false)}>
+           <TouchableOpacity activeOpacity={1} style={[styles.modalContent, { backgroundColor: colors.background }]}>
+               <View style={styles.gridContainer}>
+                 <TouchableOpacity style={[styles.gridItem, { backgroundColor: colors.inputBackground }]} onPress={() => handleOpenLog("meditation")}>
+                    <Ionicons name="flower-outline" size={32} color={colors.tint} />
+                    <Text style={[styles.gridText, { color: colors.text }]}>{t('action_log_meditation')}</Text>
+                 </TouchableOpacity>
+                 <TouchableOpacity style={[styles.gridItem, { backgroundColor: colors.inputBackground }]} onPress={() => handleOpenLog("good_deed")}>
+                    <Ionicons name="heart-half-outline" size={32} color={colors.tint} />
+                    <Text style={[styles.gridText, { color: colors.text }]}>{t('action_log_gooddeed')}</Text>
+                 </TouchableOpacity>
+                 <TouchableOpacity style={[styles.gridItem, { backgroundColor: colors.inputBackground }]} onPress={handlePansil}>
+                    <Ionicons name="body-outline" size={32} color={colors.tint} />
+                    <Text style={[styles.gridText, { color: colors.text }]}>{t('action_log_pansil')}</Text>
+                 </TouchableOpacity>
+                 <TouchableOpacity style={[styles.gridItem, { backgroundColor: colors.inputBackground }]} onPress={() => handleOpenLog("temple")}>
+                    <Ionicons name="star-outline" size={32} color={colors.tint} />
+                    <Text style={[styles.gridText, { color: colors.text }]}>{t('action_log_temple')}</Text>
+                 </TouchableOpacity>
+              </View>
+           </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Action Input Modal */}
+      <Modal visible={!!logActionType} transparent animationType="slide" onRequestClose={() => setLogActionType(null)}>
+         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setLogActionType(null)}>
+            <TouchableOpacity activeOpacity={1} style={[styles.modalContent, { backgroundColor: colors.background, paddingBottom: 40 }]}>
+               <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 16 }]}>
+                  {logActionType === 'meditation' ? t('prompt_minutes_meditated') : 
+                   logActionType === 'good_deed' ? t('prompt_describe_deed') : 
+                   t('prompt_temple_name')}
+               </Text>
+               
+               {/* Use native TextInput directly ignoring unused React-Native imports gracefully capturing text safely */}
+               <View style={{ backgroundColor: colors.inputBackground, borderRadius: 12, paddingHorizontal: 16, paddingVertical: logActionType === 'good_deed' ? 12 : 0, borderWidth: 1, borderColor: colors.border, marginBottom: 24 }}>
+                  {React.createElement(require('react-native').TextInput, {
+                     style: { color: colors.text, fontSize: 16, minHeight: logActionType === 'good_deed' ? 80 : 50 },
+                     placeholder: t('prompt_input_placeholder') || 'Enter...',
+                     placeholderTextColor: colors.tabIconDefault,
+                     value: inputValue,
+                     onChangeText: setInputValue,
+                     keyboardType: logActionType === 'meditation' ? 'numeric' : 'default',
+                     multiline: logActionType === 'good_deed',
+                     textAlignVertical: logActionType === 'good_deed' ? 'top' : 'center'
+                  })}
+               </View>
+
+               <View style={{flexDirection: 'row', justifyContent: 'space-between'}}>
+                  <TouchableOpacity style={{ flex: 1, padding: 16, alignItems: 'center', backgroundColor: colors.inputBackground, borderRadius: 12, marginRight: 8 }} onPress={() => setLogActionType(null)}>
+                     <Text style={{color: colors.text, fontWeight: 'bold'}}>{t('btn_cancel_log')}</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity style={{ flex: 1, padding: 16, alignItems: 'center', backgroundColor: colors.tint, borderRadius: 12, marginLeft: 8 }} onPress={saveLog}>
+                     <Text style={{color: '#FFF', fontWeight: 'bold'}}>{t('btn_save_log')}</Text>
+                  </TouchableOpacity>
+               </View>
+            </TouchableOpacity>
+         </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -201,8 +301,6 @@ const styles = StyleSheet.create({
     borderRadius: 5, borderWidth: 2, borderColor: '#FFF'
   },
   content: { padding: 24, paddingTop: 12 },
-  
-  // Quick Actions
   actionsScroll: {
     paddingBottom: 24,
     gap: 16,
@@ -228,15 +326,58 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginTop: 8,
   },
-
-  // Quote Card
   quoteCard: {
     borderRadius: 16,
     padding: 24,
-    borderWidth: 1,
-    boxShadow: "0px 2px 4px rgba(0, 0, 0, 0.05)",
     elevation: 2,
     marginBottom: 32,
+  },
+  fab: {
+    position: 'absolute',
+    bottom: 24,
+    right: 24,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
+    zIndex: 10,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: 100,
+  },
+  gridContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: 16,
+  },
+  gridItem: {
+    width: '47%',
+    padding: 20,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 0, 
+  },
+  gridText: {
+    marginTop: 12,
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   quoteHeader: {
     flexDirection: 'row',

@@ -44,9 +44,18 @@ export default function TabsLayout() {
         <Tabs.Screen
           name="events"
           options={{
-            title: t("tab_events"),
+            title: t("tab_events") || "Events",
             tabBarIcon: ({ color }) => (
-              <FontAwesome5 name="users" size={20} color={color} />
+              <Ionicons name="calendar" size={24} color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="library"
+          options={{
+            title: t("tab_library"),
+            tabBarIcon: ({ color }) => (
+              <FontAwesome5 name="book" size={20} color={color} />
             ),
           }}
         />
@@ -61,28 +70,8 @@ export default function TabsLayout() {
         />
       </Tabs>
 
-      <TouchableOpacity
-        style={[styles.fab, { backgroundColor: colors.tint }]}
-        onPress={() => console.log("FAB Pressed")}
-        activeOpacity={0.8}
-      >
-        <Ionicons name="add" size={32} color="#FFFFFF" />
-      </TouchableOpacity>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  fab: {
-    position: "absolute",
-    right: 24,
-    bottom: 80,
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    justifyContent: "center",
-    alignItems: "center",
-    boxShadow: "0px 4px 8px rgba(0, 0, 0, 0.15)",
-    elevation: 5,
-  },
-});
+const styles = StyleSheet.create({});
