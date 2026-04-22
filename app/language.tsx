@@ -1,20 +1,24 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import * as SecureStore from "expo-secure-store";
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useThemeConfig } from "../context/ThemeConfig";
 import { LANGUAGE_KEY } from "../i18n";
-import { Ionicons } from "@expo/vector-icons";
+import { setItem } from "../utils/storage";
 
 export default function LanguageSelection() {
   const router = useRouter();
   const { i18n } = useTranslation();
-  const { colors: currentColors, toggleDarkMode, activeScheme } = useThemeConfig();
+  const {
+    colors: currentColors,
+    toggleDarkMode,
+    activeScheme,
+  } = useThemeConfig();
 
   const selectLanguage = async (lng: string) => {
-    await SecureStore.setItemAsync(LANGUAGE_KEY, lng);
+    await setItem(LANGUAGE_KEY, lng);
     await i18n.changeLanguage(lng);
     router.replace("/sign-in");
   };
@@ -23,10 +27,7 @@ export default function LanguageSelection() {
     <SafeAreaView
       style={[styles.container, { backgroundColor: currentColors.background }]}
     >
-      <TouchableOpacity
-        style={styles.themeToggle}
-        onPress={toggleDarkMode}
-      >
+      <TouchableOpacity style={styles.themeToggle} onPress={toggleDarkMode}>
         <Ionicons
           name={activeScheme === "dark" ? "sunny" : "moon"}
           size={28}
@@ -99,10 +100,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     marginBottom: 16,
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    boxShadow: "0px 2px 4px rgba(0, 0, 0, 0.1)",
     elevation: 2,
   },
   buttonText: { fontSize: 20, fontWeight: "600" },

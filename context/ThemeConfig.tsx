@@ -1,13 +1,13 @@
-import * as SecureStore from "expo-secure-store";
 import React, {
-    createContext,
-    useContext,
-    useEffect,
-    useMemo,
-    useState,
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
 } from "react";
 import { useColorScheme } from "react-native";
 import { AppColors, AppColorScheme, ThemeColors } from "../constants/AppColors";
+import { getItem, setItem } from "../utils/storage";
 
 const THEME_MODE_KEY = "app_theme_mode";
 
@@ -36,7 +36,7 @@ export function ThemeConfigProvider({
   useEffect(() => {
     const loadThemeMode = async () => {
       try {
-        const savedMode = await SecureStore.getItemAsync(THEME_MODE_KEY);
+        const savedMode = await getItem(THEME_MODE_KEY);
         if (
           savedMode === "light" ||
           savedMode === "dark" ||
@@ -55,7 +55,7 @@ export function ThemeConfigProvider({
   const setThemeMode = async (mode: ThemeMode) => {
     try {
       setThemeModeState(mode);
-      await SecureStore.setItemAsync(THEME_MODE_KEY, mode);
+      await setItem(THEME_MODE_KEY, mode);
     } catch (error) {
       console.error("Failed to save theme mode:", error);
     }

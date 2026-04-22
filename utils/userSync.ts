@@ -1,16 +1,49 @@
-import * as SecureStore from "expo-secure-store";
 import { doc, serverTimestamp, setDoc } from "firebase/firestore";
 import { db } from "../config/firebaseConfig";
 import { LANGUAGE_KEY } from "../i18n";
+import { getItem } from "./storage";
+
+type PersistedOnboardingState = {
+  state?: {
+    language?: string;
+    primaryGoals?: string[];
+    eventFocus?: string[];
+    experienceLevel?: string;
+    readingPreferences?: {
+      theme?: "system" | "light" | "dark";
+      fontSize?: number;
+    };
+    reminders?: string[];
+    onboardingCompleted?: boolean;
+  };
+};
+
+const getPersistedOnboarding = async () => {
+  try {
+    const raw = await getItem("onboarding-storage");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PersistedOnboardingState;
+    return parsed?.state ?? null;
+  } catch {
+    return null;
+  }
+};
 
 export const syncUserToFirestore = async (user: any) => {
   if (!user) return;
 
   try {
     let languagePref = "en";
+    const onboarding = await getPersistedOnboarding();
+    const wizardCompleted = (await getItem("wizardCompleted")) === "true";
+
     try {
-      const stored = await SecureStore.getItemAsync(LANGUAGE_KEY);
-      if (stored) languagePref = stored;
+      const stored = await getItem(LANGUAGE_KEY);
+      if (stored) {
+        languagePref = stored;
+      } else if (onboarding?.language) {
+        languagePref = onboarding.language;
+      }
     } catch {
       // ignore
     }
@@ -29,6 +62,16 @@ export const syncUserToFirestore = async (user: any) => {
           "",
         photoUrl: user.imageUrl || "",
         languagePref,
+        onboardingCompleted:
+          wizardCompleted || onboarding?.onboardingCompleted === true,
+        primaryGoals: onboarding?.primaryGoals ?? [],
+        eventFocus: onboarding?.eventFocus ?? [],
+        experienceLevel: onboarding?.experienceLevel ?? "",
+        readingPreferences: onboarding?.readingPreferences ?? {
+          theme: "system",
+          fontSize: 16,
+        },
+        reminders: onboarding?.reminders ?? [],
         updatedAt: serverTimestamp(),
       },
       { merge: true },

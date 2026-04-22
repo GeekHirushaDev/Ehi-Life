@@ -10,11 +10,10 @@ import {
     useRouter,
     useSegments,
 } from "expo-router";
-import * as SecureStore from "expo-secure-store";
 import { useEffect, useState } from "react";
 import { ThemeConfigProvider } from "../context/ThemeConfig";
 import "../i18n";
-import { LANGUAGE_KEY } from "../i18n";
+import { deleteItem, getItem, setItem } from "../utils/storage";
 import { syncUserToFirestore } from "../utils/userSync";
 
 const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!;
@@ -26,21 +25,26 @@ if (!publishableKey) {
 const tokenCache = {
   async getToken(key: string) {
     try {
-      return await SecureStore.getItemAsync(key);
+      return await getItem(key);
     } catch (error) {
       console.error("SecureStore get item error: ", error);
-      await SecureStore.deleteItemAsync(key);
+      await deleteItem(key);
       return null;
     }
   },
   async saveToken(key: string, value: string) {
     try {
-      return SecureStore.setItemAsync(key, value);
+      return setItem(key, value);
     } catch {
       return;
     }
   },
 };
+
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "../config/firebaseConfig";
+
+// ... existing code ...
 
 function RootLayoutNav() {
   const { isLoaded, isSignedIn } = useAuth();
@@ -49,70 +53,120 @@ function RootLayoutNav() {
   const router = useRouter();
   const rootNavigationState = useRootNavigationState();
 
-  const [hasCheckedLanguage, setHasCheckedLanguage] = useState(false);
-  const [languageIsSet, setLanguageIsSet] = useState(false);
+  const [hasCheckedWizard, setHasCheckedWizard] = useState(false);
+  const [wizardCompleted, setWizardCompleted] = useState(false);
 
   useEffect(() => {
-    const checkLang = async () => {
+    const checkWizardState = async () => {
       try {
-        const stored = await SecureStore.getItemAsync(LANGUAGE_KEY);
-        if (stored) {
-          setLanguageIsSet(true);
+        const localWizardDone = (await getItem("wizardCompleted")) === "true";
+
+        let cloudWizardDone = false;
+
+        if (isLoaded && isSignedIn && user?.id) {
+          try {
+            const userRef = doc(db, "users", user.id);
+            const userDoc = await getDoc(userRef);
+            cloudWizardDone =
+              userDoc.exists() && userDoc.data()?.onboardingCompleted === true;
+          } catch (cloudErr: any) {
+            if (cloudErr?.code !== "permission-denied") {
+              console.error(
+                "Failed to check cloud wizard preference:",
+                cloudErr,
+              );
+            }
+          }
         }
+
+        setWizardCompleted(localWizardDone || cloudWizardDone);
       } catch (err) {
-        console.error("Failed to fetch language preference:", err);
+        console.error("Failed to fetch wizard preference:", err);
       } finally {
-        setHasCheckedLanguage(true);
+        setHasCheckedWizard(true);
       }
     };
-    checkLang();
-  }, []);
+
+    checkWizardState();
+  }, [isLoaded, isSignedIn, user?.id]);
 
   useEffect(() => {
-    if (!isLoaded || !hasCheckedLanguage || !rootNavigationState?.key) return;
+    if (!hasCheckedWizard || !rootNavigationState?.key) return;
+
+    let cancelled = false;
 
     const routeByState = async () => {
       const inAuthGroup = segments[0] === "(auth)";
-      const isLanguageScreen = segments[0] === "language";
+      const isWizardRoute = segments[0] === "wizard";
+      const latestLocalWizardDone =
+        (await getItem("wizardCompleted")) === "true";
+      const effectiveWizardCompleted = wizardCompleted || latestLocalWizardDone;
 
-      const storedLanguage = await SecureStore.getItemAsync(LANGUAGE_KEY);
-      const hasLanguage = !!storedLanguage;
+      if (!isLoaded) {
+        if (!effectiveWizardCompleted && !isWizardRoute) {
+          router.replace("/wizard");
+          return;
+        }
 
-      if (hasLanguage !== languageIsSet) {
-        setLanguageIsSet(hasLanguage);
-      }
-
-      if (!hasLanguage && !isLanguageScreen) {
-        router.replace("/language");
+        if (effectiveWizardCompleted && !inAuthGroup && !isWizardRoute) {
+          router.replace("/sign-in");
+        }
         return;
       }
 
-      if (hasLanguage) {
-        if (isSignedIn && (inAuthGroup || isLanguageScreen)) {
-          router.replace("/");
-        } else if (!isSignedIn && !inAuthGroup) {
-          router.replace("/sign-in");
-        }
+      if (!cancelled && effectiveWizardCompleted !== wizardCompleted) {
+        setWizardCompleted(effectiveWizardCompleted);
+      }
+
+      if (!isSignedIn && !effectiveWizardCompleted && !isWizardRoute) {
+        router.replace("/wizard");
+        return;
+      }
+
+      if (!isSignedIn && effectiveWizardCompleted && !inAuthGroup) {
+        router.replace("/sign-in");
+        return;
+      }
+
+      if (isSignedIn && !effectiveWizardCompleted && !isWizardRoute) {
+        router.replace("/wizard");
+        return;
+      }
+
+      if (
+        isSignedIn &&
+        effectiveWizardCompleted &&
+        (inAuthGroup ||
+          isWizardRoute ||
+          !segments[0] ||
+          segments[0] === "index")
+      ) {
+        router.replace("/(tabs)");
       }
     };
 
     routeByState();
+
+    return () => {
+      cancelled = true;
+    };
   }, [
     isSignedIn,
     isLoaded,
-    hasCheckedLanguage,
-    languageIsSet,
+    user?.id,
+    hasCheckedWizard,
+    wizardCompleted,
     segments,
     rootNavigationState?.key,
   ]);
 
   useEffect(() => {
-    if (isSignedIn && user && languageIsSet) {
+    if (isSignedIn && user) {
       syncUserToFirestore(user);
     }
-  }, [isSignedIn, user, languageIsSet]);
+  }, [isSignedIn, user]);
 
-  if (!hasCheckedLanguage || !isLoaded) {
+  if (!hasCheckedWizard) {
     return null;
   }
 

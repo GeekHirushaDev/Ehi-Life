@@ -2,7 +2,6 @@ import { useOAuth, useSignUp } from "@clerk/clerk-expo";
 import { AntDesign, Ionicons } from "@expo/vector-icons";
 import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
-import * as SecureStore from "expo-secure-store";
 import * as WebBrowser from "expo-web-browser";
 import React, { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -21,6 +20,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useThemeConfig } from "../../context/ThemeConfig";
 import { LANGUAGE_KEY } from "../../i18n";
+import { setItem } from "../../utils/storage";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -29,7 +29,11 @@ export default function SignUp() {
   const { startOAuthFlow } = useOAuth({ strategy: "oauth_google" });
   const router = useRouter();
   const { t, i18n } = useTranslation();
-  const { colors: currentColors, toggleDarkMode, activeScheme } = useThemeConfig();
+  const {
+    colors: currentColors,
+    toggleDarkMode,
+    activeScheme,
+  } = useThemeConfig();
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -43,7 +47,7 @@ export default function SignUp() {
 
   const selectLanguage = async (lng: "en" | "si") => {
     try {
-      await SecureStore.setItemAsync(LANGUAGE_KEY, lng);
+      await setItem(LANGUAGE_KEY, lng);
       await i18n.changeLanguage(lng);
     } catch (error) {
       console.error("Failed to change language:", error);
@@ -83,7 +87,7 @@ export default function SignUp() {
 
       if (completeSignUp.status === "complete") {
         await setActive({ session: completeSignUp.createdSessionId });
-        router.replace("/");
+        router.replace("/(tabs)");
       } else {
         console.log(completeSignUp);
         Alert.alert("Error", "Validation not complete.");
@@ -110,7 +114,7 @@ export default function SignUp() {
         await authSession.setActive?.({
           session: authSession.createdSessionId,
         });
-        router.replace("/");
+        router.replace("/(tabs)");
       }
     } catch (err: any) {
       console.error("OAuth sign up error", err);
@@ -125,10 +129,7 @@ export default function SignUp() {
     <SafeAreaView
       style={[styles.container, { backgroundColor: currentColors.background }]}
     >
-      <TouchableOpacity
-        style={styles.themeToggle}
-        onPress={toggleDarkMode}
-      >
+      <TouchableOpacity style={styles.themeToggle} onPress={toggleDarkMode}>
         <Ionicons
           name={activeScheme === "dark" ? "sunny" : "moon"}
           size={28}

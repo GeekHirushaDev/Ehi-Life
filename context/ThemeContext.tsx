@@ -1,39 +1,47 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { useColorScheme as useSystemColorScheme } from 'react-native';
-import * as SecureStore from 'expo-secure-store';
+import React, { createContext, useContext, useEffect, useState } from "react";
+import { useColorScheme as useSystemColorScheme } from "react-native";
+import { getItem, setItem } from "../utils/storage";
 
-type Theme = 'light' | 'dark' | 'system';
+type Theme = "light" | "dark" | "system";
 
 interface ThemeContextType {
   theme: Theme;
-  colorScheme: 'light' | 'dark';
+  colorScheme: "light" | "dark";
   setTheme: (theme: Theme) => void;
 }
 
 const ThemeContext = createContext<ThemeContextType>({
-  theme: 'system',
-  colorScheme: 'light',
+  theme: "system",
+  colorScheme: "light",
   setTheme: () => {},
 });
 
 export const useTheme = () => useContext(ThemeContext);
 
-export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
   const systemColorScheme = useSystemColorScheme();
-  const [theme, setThemeState] = useState<Theme>('system');
-  const [colorScheme, setColorScheme] = useState<'light' | 'dark'>(systemColorScheme || 'light');
+  const [theme, setThemeState] = useState<Theme>("system");
+  const [colorScheme, setColorScheme] = useState<"light" | "dark">(
+    systemColorScheme || "light",
+  );
 
   useEffect(() => {
-    SecureStore.getItemAsync('app_theme').then((savedTheme) => {
-      if (savedTheme === 'light' || savedTheme === 'dark' || savedTheme === 'system') {
+    getItem("app_theme").then((savedTheme) => {
+      if (
+        savedTheme === "light" ||
+        savedTheme === "dark" ||
+        savedTheme === "system"
+      ) {
         setThemeState(savedTheme);
       }
     });
   }, []);
 
   useEffect(() => {
-    if (theme === 'system') {
-      setColorScheme(systemColorScheme || 'light');
+    if (theme === "system") {
+      setColorScheme(systemColorScheme || "light");
     } else {
       setColorScheme(theme);
     }
@@ -41,7 +49,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const setTheme = (newTheme: Theme) => {
     setThemeState(newTheme);
-    SecureStore.setItemAsync('app_theme', newTheme);
+    setItem("app_theme", newTheme);
   };
 
   return (
