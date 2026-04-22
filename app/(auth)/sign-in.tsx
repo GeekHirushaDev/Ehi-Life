@@ -1,9 +1,11 @@
 import { useOAuth, useSignIn } from "@clerk/clerk-expo";
-import { AntDesign } from "@expo/vector-icons";
+import { AntDesign, Ionicons } from "@expo/vector-icons";
 import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
+import * as SecureStore from "expo-secure-store";
 import * as WebBrowser from "expo-web-browser";
 import React, { useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Alert,
   Pressable,
@@ -14,6 +16,8 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useThemeConfig } from "../../context/ThemeConfig";
+import { LANGUAGE_KEY } from "../../i18n";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -21,10 +25,23 @@ export default function SignIn() {
   const { signIn, setActive, isLoaded } = useSignIn();
   const { startOAuthFlow } = useOAuth({ strategy: "oauth_google" });
   const router = useRouter();
+  const { t, i18n } = useTranslation();
+  const { colors: currentColors, toggleDarkMode, activeScheme } = useThemeConfig();
 
   const [emailAddress, setEmailAddress] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const currentLanguage = i18n.language?.startsWith("si") ? "si" : "en";
+
+  const selectLanguage = async (lng: "en" | "si") => {
+    try {
+      await SecureStore.setItemAsync(LANGUAGE_KEY, lng);
+      await i18n.changeLanguage(lng);
+    } catch (error) {
+      console.error("Failed to change language:", error);
+    }
+  };
 
   const onSignInPress = async () => {
     if (!isLoaded) return;
@@ -72,63 +89,164 @@ export default function SignIn() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: currentColors.background }]}
+    >
+      <TouchableOpacity
+        style={styles.themeToggle}
+        onPress={toggleDarkMode}
+      >
+        <Ionicons
+          name={activeScheme === "dark" ? "sunny" : "moon"}
+          size={28}
+          color={currentColors.icon}
+        />
+      </TouchableOpacity>
       <View style={styles.innerContainer}>
-        <Text style={styles.title}>Welcome back to Ehi Life</Text>
-        <Text style={styles.subtitle}>
-          Sign in to continue your mindful journey
+        <View
+          style={[
+            styles.languageSwitcher,
+            {
+              backgroundColor: currentColors.inputBackground,
+              borderColor: currentColors.border,
+            },
+          ]}
+        >
+          <Pressable
+            style={[
+              styles.languageChip,
+              currentLanguage === "en" && {
+                backgroundColor: currentColors.tint,
+              },
+            ]}
+            onPress={() => selectLanguage("en")}
+          >
+            <Text
+              style={[
+                styles.languageChipText,
+                {
+                  color:
+                    currentLanguage === "en" ? "#FFFFFF" : currentColors.text,
+                },
+              ]}
+            >
+              EN
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[
+              styles.languageChip,
+              currentLanguage === "si" && {
+                backgroundColor: currentColors.tint,
+              },
+            ]}
+            onPress={() => selectLanguage("si")}
+          >
+            <Text
+              style={[
+                styles.languageChipText,
+                {
+                  color:
+                    currentLanguage === "si" ? "#FFFFFF" : currentColors.text,
+                },
+              ]}
+            >
+              සි
+            </Text>
+          </Pressable>
+        </View>
+
+        <Text style={[styles.title, { color: currentColors.text }]}>
+          {t("welcome_back")}
+        </Text>
+        <Text style={[styles.subtitle, { color: currentColors.tint }]}>
+          {t("sign_in_subtitle")}
         </Text>
 
         <TextInput
           autoCapitalize="none"
           value={emailAddress}
-          placeholder="Email Address"
-          placeholderTextColor="#A0A0A0"
+          placeholder={t("email_placeholder")}
+          placeholderTextColor={currentColors.tabIconDefault}
           onChangeText={(email) => setEmailAddress(email)}
-          style={styles.input}
+          style={[
+            styles.input,
+            {
+              backgroundColor: currentColors.inputBackground,
+              borderColor: currentColors.border,
+              color: currentColors.text,
+            },
+          ]}
         />
         <TextInput
           value={password}
-          placeholder="Password"
-          placeholderTextColor="#A0A0A0"
+          placeholder={t("password_placeholder")}
+          placeholderTextColor={currentColors.tabIconDefault}
           secureTextEntry={true}
           onChangeText={(password) => setPassword(password)}
-          style={styles.input}
+          style={[
+            styles.input,
+            {
+              backgroundColor: currentColors.inputBackground,
+              borderColor: currentColors.border,
+              color: currentColors.text,
+            },
+          ]}
         />
 
         <TouchableOpacity
-          style={styles.primaryButton}
+          style={[
+            styles.primaryButton,
+            { backgroundColor: currentColors.tint },
+          ]}
           onPress={onSignInPress}
           disabled={loading}
         >
           <Text style={styles.primaryButtonText}>
-            {loading ? "Signing in..." : "Sign In"}
+            {loading ? t("signing_in") : t("sign_in_button")}
           </Text>
         </TouchableOpacity>
 
         <View style={styles.dividerContainer}>
-          <View style={styles.divider} />
-          <Text style={styles.dividerText}>OR</Text>
-          <View style={styles.divider} />
+          <View
+            style={[styles.divider, { backgroundColor: currentColors.border }]}
+          />
+          <Text style={styles.dividerText}>{t("or")}</Text>
+          <View
+            style={[styles.divider, { backgroundColor: currentColors.border }]}
+          />
         </View>
 
         <Pressable
           style={({ pressed }) => [
             styles.googleButton,
-            pressed && styles.googleButtonPressed,
+            {
+              backgroundColor: currentColors.googleButtonBG,
+              borderColor: currentColors.border,
+            },
+            pressed && { opacity: 0.92, borderColor: currentColors.tint },
           ]}
           onPress={onGoogleSignIn}
         >
           <View style={styles.googleIconBadge}>
             <AntDesign name="google" size={16} color="#DB4437" />
           </View>
-          <Text style={styles.googleButtonText}>Continue with Google</Text>
+          <Text
+            style={[
+              styles.googleButtonText,
+              { color: currentColors.googleButtonText },
+            ]}
+          >
+            {t("continue_google")}
+          </Text>
         </Pressable>
 
         <View style={styles.footerContainer}>
-          <Text style={styles.footerText}>Don't have an account? </Text>
+          <Text style={styles.footerText}>{t("no_account")}</Text>
           <TouchableOpacity onPress={() => router.push("/sign-up")}>
-            <Text style={styles.footerLink}>Sign Up</Text>
+            <Text style={[styles.footerLink, { color: currentColors.text }]}>
+              {t("sign_up_link")}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -137,32 +255,52 @@ export default function SignIn() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F5F7F5" },
+  container: { flex: 1 },
+  themeToggle: {
+    position: "absolute",
+    top: 60,
+    right: 24,
+    zIndex: 10,
+    padding: 8,
+  },
   innerContainer: { flex: 1, padding: 24, justifyContent: "center" },
+  languageSwitcher: {
+    alignSelf: "center",
+    flexDirection: "row",
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 4,
+    marginBottom: 24,
+    gap: 6,
+  },
+  languageChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  languageChipText: {
+    fontSize: 13,
+    fontWeight: "700",
+  },
   title: {
     fontSize: 28,
     fontWeight: "bold",
-    color: "#2C4C3B",
     marginBottom: 8,
     textAlign: "center",
   },
   subtitle: {
     fontSize: 16,
-    color: "#4A7C59",
     marginBottom: 32,
     textAlign: "center",
   },
   input: {
-    backgroundColor: "#FFFFFF",
     padding: 16,
     borderRadius: 12,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: "#E0E0E0",
     fontSize: 16,
   },
   primaryButton: {
-    backgroundColor: "#4A7C59",
     padding: 16,
     borderRadius: 12,
     alignItems: "center",
@@ -174,22 +312,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginVertical: 32,
   },
-  divider: { flex: 1, height: 1, backgroundColor: "#E0E0E0" },
+  divider: { flex: 1, height: 1 },
   dividerText: { marginHorizontal: 16, color: "#A0A0A0", fontSize: 14 },
   googleButton: {
-    backgroundColor: "#FFFFFF",
     padding: 16,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#E0E0E0",
     alignItems: "center",
     flexDirection: "row",
     justifyContent: "center",
     gap: 12,
-  },
-  googleButtonPressed: {
-    opacity: 0.92,
-    borderColor: "#D0D0D0",
   },
   googleIconBadge: {
     width: 28,
@@ -201,12 +333,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  googleButtonText: { color: "#2C4C3B", fontSize: 16, fontWeight: "600" },
+  googleButtonText: { fontSize: 16, fontWeight: "600" },
   footerContainer: {
     flexDirection: "row",
     justifyContent: "center",
     marginTop: 32,
   },
-  footerText: { color: "#4A7C59", fontSize: 15 },
-  footerLink: { color: "#2C4C3B", fontSize: 15, fontWeight: "bold" },
+  footerText: { color: "#A0A0A0", fontSize: 15 },
+  footerLink: { fontSize: 15, fontWeight: "bold" },
 });

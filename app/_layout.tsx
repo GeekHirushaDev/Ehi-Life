@@ -4,9 +4,17 @@ import {
     useAuth,
     useUser,
 } from "@clerk/clerk-expo";
-import { Stack, useRouter, useSegments } from "expo-router";
+import {
+    Stack,
+    useRootNavigationState,
+    useRouter,
+    useSegments,
+} from "expo-router";
 import * as SecureStore from "expo-secure-store";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { ThemeConfigProvider } from "../context/ThemeConfig";
+import "../i18n";
+import { LANGUAGE_KEY } from "../i18n";
 import { syncUserToFirestore } from "../utils/userSync";
 
 const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!;
@@ -39,34 +47,86 @@ function RootLayoutNav() {
   const { user } = useUser();
   const segments = useSegments();
   const router = useRouter();
+  const rootNavigationState = useRootNavigationState();
+
+  const [hasCheckedLanguage, setHasCheckedLanguage] = useState(false);
+  const [languageIsSet, setLanguageIsSet] = useState(false);
 
   useEffect(() => {
-    if (!isLoaded) return;
-
-    const inAuthGroup = segments[0] === "(auth)";
-
-    if (isSignedIn && inAuthGroup) {
-      router.replace("/");
-    } else if (!isSignedIn && !inAuthGroup) {
-      router.replace("/sign-in");
-    }
-  }, [isSignedIn, isLoaded, segments]);
+    const checkLang = async () => {
+      try {
+        const stored = await SecureStore.getItemAsync(LANGUAGE_KEY);
+        if (stored) {
+          setLanguageIsSet(true);
+        }
+      } catch (err) {
+        console.error("Failed to fetch language preference:", err);
+      } finally {
+        setHasCheckedLanguage(true);
+      }
+    };
+    checkLang();
+  }, []);
 
   useEffect(() => {
-    if (isSignedIn && user) {
+    if (!isLoaded || !hasCheckedLanguage || !rootNavigationState?.key) return;
+
+    const routeByState = async () => {
+      const inAuthGroup = segments[0] === "(auth)";
+      const isLanguageScreen = segments[0] === "language";
+
+      const storedLanguage = await SecureStore.getItemAsync(LANGUAGE_KEY);
+      const hasLanguage = !!storedLanguage;
+
+      if (hasLanguage !== languageIsSet) {
+        setLanguageIsSet(hasLanguage);
+      }
+
+      if (!hasLanguage && !isLanguageScreen) {
+        router.replace("/language");
+        return;
+      }
+
+      if (hasLanguage) {
+        if (isSignedIn && (inAuthGroup || isLanguageScreen)) {
+          router.replace("/");
+        } else if (!isSignedIn && !inAuthGroup) {
+          router.replace("/sign-in");
+        }
+      }
+    };
+
+    routeByState();
+  }, [
+    isSignedIn,
+    isLoaded,
+    hasCheckedLanguage,
+    languageIsSet,
+    segments,
+    rootNavigationState?.key,
+  ]);
+
+  useEffect(() => {
+    if (isSignedIn && user && languageIsSet) {
       syncUserToFirestore(user);
     }
-  }, [isSignedIn, user]);
+  }, [isSignedIn, user, languageIsSet]);
+
+  if (!hasCheckedLanguage || !isLoaded) {
+    return null;
+  }
 
   return <Stack screenOptions={{ headerShown: false }} />;
 }
 
 export default function RootLayout() {
   return (
-    <ClerkProvider tokenCache={tokenCache} publishableKey={publishableKey}>
-      <ClerkLoaded>
-        <RootLayoutNav />
-      </ClerkLoaded>
-    </ClerkProvider>
+    <ThemeConfigProvider>
+      <ClerkProvider tokenCache={tokenCache} publishableKey={publishableKey}>
+        <ClerkLoaded>
+          <RootLayoutNav />
+        </ClerkLoaded>
+      </ClerkProvider>
+    </ThemeConfigProvider>
   );
 }
