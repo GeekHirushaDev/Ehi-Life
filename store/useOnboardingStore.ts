@@ -1,6 +1,9 @@
-import { create } from "zustand";
-import { StateStorage, createJSONStorage, persist } from "zustand/middleware";
+import type { StateStorage } from "zustand/middleware";
 import { deleteItem, getItem, setItem } from "../utils/storage";
+
+const { create } = require("zustand") as typeof import("zustand");
+const { persist, createJSONStorage } =
+  require("zustand/middleware") as typeof import("zustand/middleware");
 
 interface OnboardingState {
   language: string;
