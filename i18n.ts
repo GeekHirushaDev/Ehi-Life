@@ -1,8 +1,8 @@
-import * as SecureStore from "expo-secure-store";
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 import en from "./locales/en.json";
 import si from "./locales/si.json";
+import { getItem } from "./utils/storage";
 
 export const LANGUAGE_KEY = "app_language";
 
@@ -14,7 +14,7 @@ const resources = {
 const initI18n = async () => {
   let savedLanguage = "en";
   try {
-    const lang = await SecureStore.getItemAsync(LANGUAGE_KEY);
+    const lang = await getItem(LANGUAGE_KEY);
     if (lang) savedLanguage = lang;
   } catch (error) {
     console.error("Error loading language", error);

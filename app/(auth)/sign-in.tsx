@@ -2,22 +2,22 @@ import { useOAuth, useSignIn } from "@clerk/clerk-expo";
 import { AntDesign, Ionicons } from "@expo/vector-icons";
 import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
-import * as SecureStore from "expo-secure-store";
 import * as WebBrowser from "expo-web-browser";
 import React, { useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  Alert,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    Alert,
+    Pressable,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useThemeConfig } from "../../context/ThemeConfig";
 import { LANGUAGE_KEY } from "../../i18n";
+import { setItem } from "../../utils/storage";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -26,7 +26,11 @@ export default function SignIn() {
   const { startOAuthFlow } = useOAuth({ strategy: "oauth_google" });
   const router = useRouter();
   const { t, i18n } = useTranslation();
-  const { colors: currentColors, toggleDarkMode, activeScheme } = useThemeConfig();
+  const {
+    colors: currentColors,
+    toggleDarkMode,
+    activeScheme,
+  } = useThemeConfig();
 
   const [emailAddress, setEmailAddress] = useState("");
   const [password, setPassword] = useState("");
@@ -36,7 +40,7 @@ export default function SignIn() {
 
   const selectLanguage = async (lng: "en" | "si") => {
     try {
-      await SecureStore.setItemAsync(LANGUAGE_KEY, lng);
+      await setItem(LANGUAGE_KEY, lng);
       await i18n.changeLanguage(lng);
     } catch (error) {
       console.error("Failed to change language:", error);
@@ -54,14 +58,18 @@ export default function SignIn() {
 
       if (signInAttempt.status === "complete") {
         await setActive({ session: signInAttempt.createdSessionId });
-        router.replace("/");
+        router.replace("/(tabs)");
       } else {
         console.log(signInAttempt);
         Alert.alert("Error", "Sign in is not complete. Please try again.");
       }
     } catch (err: any) {
-      console.error(JSON.stringify(err, null, 2));
-      Alert.alert("Error", err.errors?.[0]?.message || "Sign in failed");
+      Alert.alert(
+        "Sign In Error",
+        err.errors?.[0]?.longMessage ||
+          err.errors?.[0]?.message ||
+          "Sign in failed. Please check your credentials.",
+      );
     } finally {
       setLoading(false);
     }
@@ -79,7 +87,7 @@ export default function SignIn() {
         await authSession.setActive?.({
           session: authSession.createdSessionId,
         });
-        router.replace("/");
+        router.replace("/(tabs)");
       } else {
         // Use signIn or signUp for next steps such as MFA
       }
@@ -92,10 +100,7 @@ export default function SignIn() {
     <SafeAreaView
       style={[styles.container, { backgroundColor: currentColors.background }]}
     >
-      <TouchableOpacity
-        style={styles.themeToggle}
-        onPress={toggleDarkMode}
-      >
+      <TouchableOpacity style={styles.themeToggle} onPress={toggleDarkMode}>
         <Ionicons
           name={activeScheme === "dark" ? "sunny" : "moon"}
           size={28}
